@@ -38,6 +38,7 @@ are required — they compile the fallback terminfo entries.
 | --- | --- | --- |
 | `ABIS` | `arm64-v8a armeabi-v7a` | space separated ABI list |
 | `API` | `26` | minimum Android API level; htop needs `nl_langinfo`, added in 26 |
+| `CONFIG_DIR` | `/data/local/tmp/.config` | where htop keeps `htoprc` |
 | `ANDROID_NDK_HOME` | *(downloads latest)* | use an existing NDK |
 | `NCURSES_VERSION` | *(latest release)* | pin a version |
 | `HTOP_VERSION` | *(latest release)* | pin a tag, e.g. `3.5.3` |
@@ -45,6 +46,23 @@ are required — they compile the fallback terminfo entries.
 
 Names in `FALLBACKS` that the ncurses release does not know about are reported
 and skipped rather than breaking the build.
+
+## Configuration
+
+htop resolves its config file as `$HOME` + `CONFIG_DIR` + `/htop/htoprc`. An adb
+shell runs with `HOME=/`, and upstream's default `CONFIG_DIR` of `/.config`
+therefore points at `//.config/htop/htoprc`, which htop cannot create — it runs
+fine but complains `Cannot save configuration` on exit and forgets every
+setting. So this build passes `--with-config=/data/local/tmp/.config`, giving:
+
+```
+/data/local/tmp/.config/htop/htoprc
+```
+
+Two things still override it: `$HTOPRC`, which names the file outright, and
+`$XDG_CONFIG_HOME`, which replaces the `$HOME`+`CONFIG_DIR` part. Under Termux,
+where `$HOME` is a real directory, set one of those (or rebuild with
+`CONFIG_DIR=/.config`) — otherwise the path lands under Termux's home.
 
 ## CI
 

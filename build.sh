@@ -8,6 +8,7 @@
 # Environment:
 #   ABIS             space separated ABI list (default: "arm64-v8a armeabi-v7a")
 #   API              minimum Android API level (default: 26, nl_langinfo)
+#   CONFIG_DIR       htoprc location (default: /data/local/tmp/.config)
 #   ANDROID_NDK_HOME pre-existing NDK; downloaded if unset
 #   NCURSES_VERSION  pinned ncurses version (default: latest release)
 #   HTOP_VERSION     pinned htop version (default: latest release)
@@ -20,6 +21,9 @@ WORK="${WORK:-$TOP/build}"
 DIST="${DIST:-$TOP/dist}"
 ABIS="${ABIS:-arm64-v8a armeabi-v7a}"
 API="${API:-26}"
+# htop stores its config in $HOME$CONFIG_DIR/htop/htoprc. adb shells run with
+# HOME=/, so an absolute path here lands where we want it.
+CONFIG_DIR="${CONFIG_DIR:-/data/local/tmp/.config}"
 JOBS="${JOBS:-$(nproc)}"
 
 # Terminals worth carrying around on a phone. Anything unknown degrades to
@@ -165,6 +169,7 @@ build_abi() {
     export LDFLAGS="$LDFLAGS -L$prefix/lib -static-libgcc"
     "$hsrc/configure" \
       --host="$host" --prefix=/data/local/tmp/htop \
+      --with-config="$CONFIG_DIR" \
       --enable-unicode \
       --disable-hwloc --disable-sensors --disable-capabilities \
       --disable-delayacct --disable-affinity \
