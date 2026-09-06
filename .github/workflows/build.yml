@@ -1,0 +1,99 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ncurses_version:
+        description: "Pin an ncurses version (empty = latest release)"
+        required: false
+      htop_version:
+        description: "Pin an htop version tag (empty = latest release)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a]
+    steps:
+      - uses: actions/checkout@v4
+
+      # tic/infocmp compile the fallback terminfo entries into libncurses.
+      - name: Install host tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ncurses-bin ncurses-term unzip xz-utils
+
+      - name: Cache Android NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: build/ndk
+          key: ndk-${{ runner.os }}-v1
+
+      - name: Build
+        env:
+          ABIS: ${{ matrix.abi }}
+          NCURSES_VERSION: ${{ inputs.ncurses_version }}
+          HTOP_VERSION: ${{ inputs.htop_version }}
+        run: |
+          # Reuse the cached NDK unpacked by an earlier run, if there is one.
+          ndk=$(echo build/ndk/android-ndk-* 2>/dev/null)
+          if [ -d "$ndk" ]; then
+            echo "ANDROID_NDK_HOME=$GITHUB_WORKSPACE/$ndk" >> "$GITHUB_ENV"
+            export ANDROID_NDK_HOME="$GITHUB_WORKSPACE/$ndk"
+          fi
+          ./build.sh
+
+      - name: Summarize
+        run: |
+          {
+            echo '### htop for `${{ matrix.abi }}`'
+            echo '```'
+            cat dist/versions.txt
+            file dist/${{ matrix.abi }}/htop
+            ls -l dist/${{ matrix.abi }}/htop
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: htop-${{ matrix.abi }}
+          path: |
+            dist/${{ matrix.abi }}/htop
+            dist/versions.txt
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release assets
+        run: |
+          mkdir -p release
+          for d in artifacts/htop-*; do
+            abi="${d#artifacts/htop-}"
+            cp "$d/htop" "release/htop-$abi"
+          done
+          cp artifacts/htop-arm64-v8a/versions.txt release/versions.txt
+          ls -l release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: release/versions.txt
+          generate_release_notes: true
