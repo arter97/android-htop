@@ -11,11 +11,12 @@ executable with no data files and no dependencies beyond bionic.
 
 ## Getting a binary
 
-Grab `htop-<abi>` from the [latest release](../../releases/latest), or download
-the `htop-<abi>` artifact from any [Actions run](../../actions).
+Grab `htop-<version>-arm64` (or `-arm32`) from the
+[latest release](../../releases/latest), or download the `htop-arm64` /
+`htop-arm32` artifact from any [Actions run](../../actions).
 
 ```sh
-adb push htop-arm64-v8a /data/local/tmp/htop
+adb push htop-3.5.3-arm64 /data/local/tmp/htop
 adb shell chmod 755 /data/local/tmp/htop
 adb shell -t /data/local/tmp/htop
 ```
@@ -67,7 +68,15 @@ where `$HOME` is a real directory, set one of those (or rebuild with
 ## CI
 
 `.github/workflows/build.yml` builds both ABIs on every push and uploads them as
-artifacts. Pushing a `v*` tag also publishes a GitHub Release with
-`htop-arm64-v8a`, `htop-armeabi-v7a` and the exact NDK/ncurses/htop versions
-used. `workflow_dispatch` accepts version pins if you need to reproduce an
-older build.
+artifacts.
+
+Release tags are `v<htop version>-<revision>`, e.g. `v3.5.3-0` for the first
+release of htop 3.5.3 and `v3.5.3-1` if something on our side needs a rebuild of
+the same upstream version. Pushing one publishes a GitHub Release carrying
+`htop-<htop version>-arm64`, `htop-<htop version>-arm32` and the exact
+NDK/ncurses/htop versions used.
+
+The tag also pins what gets built: a `v3.5.3-0` tag builds htop 3.5.3 rather
+than whatever is newest, so the assets can never disagree with the tag they ship
+under. Ordinary pushes still track the latest upstream release, and
+`workflow_dispatch` accepts explicit version pins.

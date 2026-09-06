@@ -3,6 +3,7 @@ name: build
 on:
   push:
     branches: ["**"]
+    # Release tags are v<htop version>-<revision>, e.g. v3.5.3-0.
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -23,7 +24,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        abi: [arm64-v8a, armeabi-v7a]
+        include:
+          - abi: arm64-v8a
+            arch: arm64
+          - abi: armeabi-v7a
+            arch: arm32
     env:
       # Runners preinstall an older NDK; ignore it and use the latest release.
       ANDROID_NDK_HOME: ""
@@ -36,6 +41,21 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ncurses-bin ncurses-term unzip xz-utils
+
+      # A v<htop version>-<revision> tag pins the htop it names, so the assets
+      # cannot end up disagreeing with the tag they were released under.
+      - name: Resolve htop version
+        id: htop
+        run: |
+          version="${{ inputs.htop_version }}"
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              tag="${GITHUB_REF#refs/tags/v}"
+              version="${tag%-*}"
+              echo "tag pins htop $version"
+              ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Resolve latest NDK
         id: ndk
@@ -51,7 +71,7 @@ jobs:
         env:
           ABIS: ${{ matrix.abi }}
           NCURSES_VERSION: ${{ inputs.ncurses_version }}
-          HTOP_VERSION: ${{ inputs.htop_version }}
+          HTOP_VERSION: ${{ steps.htop.outputs.version }}
         run: |
           # Reuse the cached NDK unpacked by an earlier run, if there is one.
           ndk=$(echo build/ndk/android-ndk-*)
@@ -62,20 +82,22 @@ jobs:
 
       - name: Stage artifact
         run: |
+          version="$(sed -n 's/^htop=//p' dist/versions.txt)"
+          name="htop-$version-${{ matrix.arch }}"
           mkdir -p out
-          cp dist/${{ matrix.abi }}/htop out/htop-${{ matrix.abi }}
+          cp "dist/${{ matrix.abi }}/htop" "out/$name"
           cp dist/versions.txt out/
           {
-            echo '### htop for `${{ matrix.abi }}`'
+            echo "### \`$name\`"
             echo '```'
             cat dist/versions.txt
-            file out/htop-${{ matrix.abi }}
+            file "out/$name"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: htop-${{ matrix.abi }}
+          name: htop-${{ matrix.arch }}
           path: out/
           if-no-files-found: error
 
@@ -91,12 +113,12 @@ jobs:
       - name: Stage release assets
         run: |
           mkdir -p release
-          cp artifacts/htop-*/htop-* release/
-          cp artifacts/htop-arm64-v8a/versions.txt release/versions.txt
+          cp artifacts/htop-*/htop-*-arm* release/
+          cp artifacts/htop-arm64/versions.txt release/versions.txt
           ls -l release
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          files: release/htop-*
           body_path: release/versions.txt
           generate_release_notes: true
