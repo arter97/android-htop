@@ -46,16 +46,6 @@ are required — they compile the fallback terminfo entries.
 Names in `FALLBACKS` that the ncurses release does not know about are reported
 and skipped rather than breaking the build.
 
-## Testing on a device
-
-```sh
-./test-device.sh                 # defaults to dist/arm64-v8a/htop
-```
-
-Pushes the binary to the connected device and runs it under a real pty once per
-`TERM`, checking that htop actually draws a screen — and that an unknown `TERM`
-is rejected instead of hanging.
-
 ## CI
 
 `.github/workflows/build.yml` builds both ABIs on every push and uploads them as
