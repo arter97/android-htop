@@ -80,3 +80,23 @@ The tag also pins what gets built: a `v3.5.3-0` tag builds htop 3.5.3 rather
 than whatever is newest, so the assets can never disagree with the tag they ship
 under. Ordinary pushes still track the latest upstream release, and
 `workflow_dispatch` accepts explicit version pins.
+
+## Following upstream
+
+`.github/workflows/upstream.yml` checks htop-dev/htop for a new release once a
+day. When it finds a version with no `v<version>-<revision>` tag here, it
+releases it as `v<version>-0`.
+
+A tag pushed with `GITHUB_TOKEN` deliberately does not trigger workflows, so the
+watcher does not push a tag and wait — it calls `build.yml` as a reusable
+workflow and passes `release_tag`, and the release job creates the tag along
+with the release. That keeps the whole thing running on the built-in token with
+no PAT to store or rotate.
+
+Running it by hand with a `force_version` releases that version even when it has
+already been tagged, taking the next free revision — `v3.5.3-1` after
+`v3.5.3-0`. That is the path for rebuilding an unchanged upstream version
+against, say, a newer NDK.
+
+Note that GitHub disables scheduled workflows after 60 days without repository
+activity.

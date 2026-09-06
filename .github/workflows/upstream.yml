@@ -1,0 +1,78 @@
+name: upstream
+
+# Watch htop-dev/htop for a new release and cut v<version>-0 for it.
+#
+# A tag pushed with GITHUB_TOKEN does not trigger workflows, so rather than
+# pushing a tag and hoping build.yml notices, we call build.yml directly and let
+# it create the tag alongside the release. No PAT required.
+
+on:
+  schedule:
+    # Daily, at a minute nobody else picked.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force_version:
+        description: "Release this htop version even if a tag already exists"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force_version }}
+        run: |
+          set -euo pipefail
+
+          version="${FORCE:-$(gh api repos/htop-dev/htop/releases/latest -q .tag_name)}"
+          case "$version" in
+            [0-9]*) ;;
+            *) echo "unexpected upstream tag '$version'" >&2; exit 1 ;;
+          esac
+          echo "upstream htop: $version"
+
+          # Any v<version>-<rev> tag means this release was already published;
+          # a rebuild of the same upstream version is a deliberate manual tag.
+          existing=""
+          for t in $(gh api "repos/$GITHUB_REPOSITORY/tags" --paginate -q '.[].name'); do
+            case "$t" in "v$version-"*) existing="$existing $t " ;; esac
+          done
+          if [ -n "$existing" ] && [ -z "$FORCE" ]; then
+            echo "already released as:$existing"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # First release of an upstream version is always revision 0; a forced
+          # rerun takes the next free revision.
+          rev=0
+          while [ "$existing" != "${existing/ v$version-$rev /}" ]; do
+            rev=$((rev + 1))
+          done
+
+          echo "releasing v$version-$rev"
+          {
+            echo "release=true"
+            echo "version=$version"
+            echo "tag=v$version-$rev"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      htop_version: ${{ needs.check.outputs.version }}
+      release_tag: ${{ needs.check.outputs.tag }}

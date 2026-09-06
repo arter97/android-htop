@@ -14,6 +14,21 @@ on:
       htop_version:
         description: "Pin an htop version tag (empty = latest release)"
         required: false
+  # Called by upstream.yml when htop cuts a release. A tag pushed with
+  # GITHUB_TOKEN cannot trigger a workflow, so the watcher calls us directly
+  # and we create the tag along with the release.
+  workflow_call:
+    inputs:
+      ncurses_version:
+        type: string
+        required: false
+      htop_version:
+        type: string
+        required: false
+      release_tag:
+        description: "Publish a release at this tag, e.g. v3.5.3-0"
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -48,13 +63,15 @@ jobs:
         id: htop
         run: |
           version="${{ inputs.htop_version }}"
+          tag="${{ inputs.release_tag }}"
           case "$GITHUB_REF" in
-            refs/tags/v*)
-              tag="${GITHUB_REF#refs/tags/v}"
-              version="${tag%-*}"
-              echo "tag pins htop $version"
-              ;;
+            refs/tags/v*) tag="${GITHUB_REF#refs/tags/}" ;;
           esac
+          if [ -z "$version" ] && [ -n "$tag" ]; then
+            version="${tag#v}"
+            version="${version%-*}"
+            echo "tag $tag pins htop $version"
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Resolve latest NDK
@@ -103,7 +120,7 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -119,6 +136,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # Created at the current commit when called by the watcher; already
+          # present when this run came from a tag push.
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: release/htop-*
           body_path: release/versions.txt
           generate_release_notes: true
