@@ -29,7 +29,7 @@ jobs:
       ANDROID_NDK_HOME: ""
       ANDROID_NDK_ROOT: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # tic/infocmp compile the fallback terminfo entries into libncurses.
       - name: Install host tools
@@ -42,7 +42,7 @@ jobs:
         run: echo "name=$(./build.sh --resolve-ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Android NDK
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/ndk
           key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.name }}
@@ -73,7 +73,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: htop-${{ matrix.abi }}
           path: out/
@@ -84,7 +84,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
