@@ -48,17 +48,24 @@ resolve_versions() {
   log "ncurses $NCURSES_VERSION, htop $HTOP_VERSION"
 }
 
+# Newest linux NDK archive that is not a beta/rc/canary drop.
+latest_ndk_name() {
+  local xml="$WORK/repository2-3.xml" name
+  mkdir -p "$WORK"
+  [ -s "$xml" ] || fetch https://dl.google.com/android/repository/repository2-3.xml "$xml"
+  name="$(grep -o 'android-ndk-r[0-9]\+[a-z]*-linux\.zip' "$xml" | sort -uV | tail -1)"
+  [ -n "$name" ] || { echo "cannot resolve NDK release" >&2; exit 1; }
+  echo "$name"
+}
+
 install_ndk() {
   if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "$ANDROID_NDK_HOME" ]; then
     log "using NDK at $ANDROID_NDK_HOME"
     return
   fi
   log "resolving latest Android NDK"
-  local xml="$WORK/repository2-3.xml" zip name
-  fetch https://dl.google.com/android/repository/repository2-3.xml "$xml"
-  # Newest linux archive that is not a beta/rc/canary drop.
-  name="$(grep -o 'android-ndk-r[0-9]\+[a-z]*-linux\.zip' "$xml" | sort -uV | tail -1)"
-  [ -n "$name" ] || { echo "cannot resolve NDK release" >&2; exit 1; }
+  local zip name
+  name="$(latest_ndk_name)"
   zip="$WORK/$name"
   log "downloading $name"
   fetch "https://dl.google.com/android/repository/$name" "$zip"
@@ -171,6 +178,13 @@ build_abi() {
 
 main() {
   mkdir -p "$WORK" "$DIST"
+
+  # Used by CI to key the NDK cache before doing any real work.
+  if [ "${1:-}" = "--resolve-ndk" ]; then
+    latest_ndk_name
+    return
+  fi
+
   resolve_versions
   install_ndk
 

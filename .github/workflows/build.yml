@@ -24,6 +24,10 @@ jobs:
       fail-fast: false
       matrix:
         abi: [arm64-v8a, armeabi-v7a]
+    env:
+      # Runners preinstall an older NDK; ignore it and use the latest release.
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -33,12 +37,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ncurses-bin ncurses-term unzip xz-utils
 
+      - name: Resolve latest NDK
+        id: ndk
+        run: echo "name=$(./build.sh --resolve-ndk)" >> "$GITHUB_OUTPUT"
+
       - name: Cache Android NDK
-        id: ndk-cache
         uses: actions/cache@v4
         with:
           path: build/ndk
-          key: ndk-${{ runner.os }}-v1
+          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.name }}
 
       - name: Build
         env:
@@ -47,30 +54,29 @@ jobs:
           HTOP_VERSION: ${{ inputs.htop_version }}
         run: |
           # Reuse the cached NDK unpacked by an earlier run, if there is one.
-          ndk=$(echo build/ndk/android-ndk-* 2>/dev/null)
+          ndk=$(echo build/ndk/android-ndk-*)
           if [ -d "$ndk" ]; then
-            echo "ANDROID_NDK_HOME=$GITHUB_WORKSPACE/$ndk" >> "$GITHUB_ENV"
             export ANDROID_NDK_HOME="$GITHUB_WORKSPACE/$ndk"
           fi
           ./build.sh
 
-      - name: Summarize
+      - name: Stage artifact
         run: |
+          mkdir -p out
+          cp dist/${{ matrix.abi }}/htop out/htop-${{ matrix.abi }}
+          cp dist/versions.txt out/
           {
             echo '### htop for `${{ matrix.abi }}`'
             echo '```'
             cat dist/versions.txt
-            file dist/${{ matrix.abi }}/htop
-            ls -l dist/${{ matrix.abi }}/htop
+            file out/htop-${{ matrix.abi }}
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
           name: htop-${{ matrix.abi }}
-          path: |
-            dist/${{ matrix.abi }}/htop
-            dist/versions.txt
+          path: out/
           if-no-files-found: error
 
   release:
@@ -85,10 +91,7 @@ jobs:
       - name: Stage release assets
         run: |
           mkdir -p release
-          for d in artifacts/htop-*; do
-            abi="${d#artifacts/htop-}"
-            cp "$d/htop" "release/htop-$abi"
-          done
+          cp artifacts/htop-*/htop-* release/
           cp artifacts/htop-arm64-v8a/versions.txt release/versions.txt
           ls -l release
 
