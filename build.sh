@@ -24,6 +24,7 @@ API="${API:-26}"
 # htop stores its config in $HOME$CONFIG_DIR/htop/htoprc. adb shells run with
 # HOME=/, so an absolute path here lands where we want it.
 CONFIG_DIR="${CONFIG_DIR:-/data/local/tmp/.config}"
+NCURSES_MIRRORS="${NCURSES_MIRRORS:-https://ftp.gnu.org/gnu/ncurses https://invisible-mirror.net/archives/ncurses https://ftpmirror.gnu.org/gnu/ncurses}"
 JOBS="${JOBS:-$(nproc)}"
 
 # Terminals worth carrying around on a phone. Anything unknown degrades to
@@ -33,13 +34,24 @@ FALLBACKS="${FALLBACKS:-dumb,linux,linux-16color,vt100,vt220,ansi,xterm,xterm-co
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 
 fetch() { # fetch <url> <output>
-  curl --retry 3 --retry-delay 2 -fsSL "$1" -o "$2"
+  curl --retry 3 --retry-delay 2 --connect-timeout 20 -fsSL "$1" -o "$2"
+}
+
+# ftp.gnu.org goes down often enough to break CI on its own; try each mirror.
+fetch_ncurses() { # fetch_ncurses <path-under-mirror> <output>
+  local m
+  for m in $NCURSES_MIRRORS; do
+    fetch "$m/$1" "$2" && return 0
+    echo "  $m unavailable, trying next mirror" >&2
+  done
+  return 1
 }
 
 resolve_versions() {
   if [ -z "${NCURSES_VERSION:-}" ]; then
-    NCURSES_VERSION="$(curl -fsSL https://ftp.gnu.org/gnu/ncurses/ \
-      | grep -o 'ncurses-[0-9][0-9.]*\.tar\.gz' \
+    local index="$WORK/ncurses-index.html"
+    fetch_ncurses "" "$index" || { echo "no reachable ncurses mirror" >&2; exit 1; }
+    NCURSES_VERSION="$(grep -o 'ncurses-[0-9][0-9.]*\.tar\.gz' "$index" \
       | sed 's/^ncurses-//; s/\.tar\.gz$//' \
       | sort -V | tail -1)"
   fi
@@ -196,7 +208,7 @@ main() {
   log "fetching sources"
   local nt="$WORK/ncurses-$NCURSES_VERSION.tar.gz"
   local ht="$WORK/htop-$HTOP_VERSION.tar.xz"
-  [ -f "$nt" ] || fetch "https://ftp.gnu.org/gnu/ncurses/ncurses-$NCURSES_VERSION.tar.gz" "$nt"
+  [ -f "$nt" ] || fetch_ncurses "ncurses-$NCURSES_VERSION.tar.gz" "$nt"
   [ -f "$ht" ] || fetch "https://github.com/htop-dev/htop/releases/download/$HTOP_VERSION/htop-${HTOP_VERSION#v}.tar.xz" "$ht"
   [ -d "$WORK/ncurses-$NCURSES_VERSION" ] || tar -C "$WORK" -xf "$nt"
   [ -d "$WORK/htop-${HTOP_VERSION#v}" ]   || tar -C "$WORK" -xf "$ht"
